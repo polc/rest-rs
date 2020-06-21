@@ -1,41 +1,44 @@
-use crate::query::Selection;
+use crate::query::NodeSelection;
 use crate::schema::{Schema, TypeMetadata};
-use crate::types::{OutputType, ResolvedNode, Type};
+use crate::types::{ObjectOutputType, OutputType, ResolvedNode, ResourceList, Type};
+
 use futures::future::BoxFuture;
+use serde_json::Value;
 use std::borrow::Cow;
 
-pub struct Id(String);
+pub trait Resource: OutputType {
+    type Id;
 
-pub trait Resource: Type {
-    fn get_item<'a>(id: Id) -> BoxFuture<'a, Self>;
+    fn get_item(id: Self::Id) -> BoxFuture<'static, Self>;
 }
 
-pub struct Link<T: Resource + Sync>(T);
+pub struct Link<T: Resource + Clone + 'static>(pub T);
 
-impl<T: Resource + Sync + Send> From<T> for Link<T> {
-    fn from(item: T) -> Self {
-        Self(item)
-    }
-}
-
-impl<T: Resource + Sync + Send> Type for Link<T> {
+impl<T: Resource + Clone + 'static> Type for Link<T> {
     fn type_name() -> Cow<'static, str> {
-        T::type_name()
+        Cow::Owned(format!("Resource:{}", T::type_name()))
     }
 
     fn type_metadata(schema: &mut Schema) -> TypeMetadata {
-        T::type_metadata(schema)
+        TypeMetadata::Resource {
+            name: Self::type_name().to_string(),
+            item_type: schema.register_type::<T>(),
+        }
     }
 }
 
-impl<'a, T: Resource + OutputType<'a> + Sync + Send + 'a> OutputType<'a> for Link<T> {
-    fn resolve(self, parent_node: &'a Selection) -> BoxFuture<'a, ResolvedNode<'a>> {
-        Box::pin(async move {
-            let uri = "/my-resources/321".to_string();
-            let content = serde_json::Value::String(uri);
-            let children = vec![self.0.resolve(&parent_node)];
+#[async_trait::async_trait]
+impl<T: Resource + Clone + 'static> OutputType for Link<T> {
+    async fn resolve(&self, selection: &NodeSelection) -> ResolvedNode {
+        let content = Value::String("/my-resources/321".to_string());
 
-            ResolvedNode(content, children)
-        })
+        let node_clone = self.0.clone();
+        let selection_clone = selection.clone();
+
+        let children: ResourceList = vec![Box::pin(async move {
+            node_clone.resolve(&selection_clone).await
+        })];
+
+        ResolvedNode(content, children)
     }
 }

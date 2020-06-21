@@ -1,9 +1,13 @@
 extern crate rest_rs;
 
 use rest_rs::{
-    parse, resolve,
-    resource::{Id, Link, Resource},
-    ObjectOutputType, OutputType, ResolvedNode, Schema, Selection, Type, TypeMetadata,
+    query::NodeSelection,
+    schema::{Schema, TypeMetadata},
+    server::{resolve, Server},
+    types::{
+        resource::{Link, Resource},
+        ObjectOutputType, OutputType, ResolvedNode, Type,
+    },
 };
 
 use futures::future::BoxFuture;
@@ -17,12 +21,12 @@ pub struct Root {}
 pub struct Children {}
 
 impl<'a> Root {
-    async fn field_str(&self) -> &'a str {
-        "I'm Root !"
+    async fn field_str(&self) -> String {
+        "I'm Root !".to_string()
     }
 
     async fn field_link(&self) -> Link<Children> {
-        Children {}.into()
+        Link(Children {})
     }
 }
 
@@ -41,36 +45,34 @@ impl Type for Root {
     }
 }
 
-impl<'a> ObjectOutputType<'a> for Root {
-    fn resolve_field(
-        self,
-        parent_node: &'a Selection,
-    ) -> BoxFuture<'a, (&'a str, ResolvedNode<'a>)> {
-        Box::pin(async move {
-            let resource_value = match parent_node.name {
-                "field_str" => self.field_str().await.resolve(&parent_node).await,
-                "field_link" => self.field_link().await.resolve(&parent_node).await,
-                _ => panic!("Field {} not found on type Root", parent_node.name),
-            };
+#[async_trait::async_trait]
+impl ObjectOutputType for Root {
+    async fn resolve_field(&self, selection: &NodeSelection) -> (&'static str, ResolvedNode) {
+        let resolved_node = match selection.name {
+            "field_str" => self.field_str().await.resolve(&selection).await,
+            "field_link" => self.field_link().await.resolve(&selection).await,
+            _ => panic!("Field {} not found on type Root", selection.name),
+        };
 
-            (parent_node.name, resource_value)
-        })
+        (selection.name, resolved_node)
     }
 }
 
 impl Resource for Root {
-    fn get_item<'a>(id: Id) -> BoxFuture<'a, Self> {
+    type Id = String;
+
+    fn get_item(id: Self::Id) -> BoxFuture<'static, Self> {
         Box::pin(async { Self {} })
     }
 }
 
-impl<'a> Children {
-    async fn field_str(&self) -> &'a str {
-        "I'm Children !"
+impl Children {
+    async fn field_str(&self) -> String {
+        "I'm Children !".to_string()
     }
 
     async fn field_recursive(&self) -> Link<Children> {
-        Children {}.into()
+        Link(Children {})
     }
 }
 
@@ -89,43 +91,37 @@ impl Type for Children {
     }
 }
 
-impl<'a> ObjectOutputType<'a> for Children {
-    fn resolve_field(
-        self,
-        parent_node: &'a Selection,
-    ) -> BoxFuture<'a, (&'a str, ResolvedNode<'a>)> {
-        Box::pin(async move {
-            let resource_value = match parent_node.name {
-                "field_str" => self.field_str().await.resolve(&parent_node).await,
-                "field_recursive" => self.field_recursive().await.resolve(&parent_node).await,
-                _ => panic!("Field {} not found on type Children", parent_node.name),
-            };
+#[async_trait::async_trait]
+impl ObjectOutputType for Children {
+    async fn resolve_field(&self, selection: &NodeSelection) -> (&'static str, ResolvedNode) {
+        let resolved_node = match selection.name {
+            "field_str" => self.field_str().await.resolve(&selection).await,
+            "field_recursive" => self.field_recursive().await.resolve(&selection).await,
+            _ => panic!("Field {} not found on type Children", selection.name),
+        };
 
-            (parent_node.name, resource_value)
-        })
+        (selection.name, resolved_node)
     }
 }
 
 impl Resource for Children {
-    fn get_item<'a>(id: Id) -> BoxFuture<'a, Self> {
+    type Id = String;
+
+    fn get_item(id: Self::Id) -> BoxFuture<'static, Self> {
         Box::pin(async { Self {} })
     }
 }
 
 #[tokio::main]
 async fn main() {
-    let request = Request::builder()
-        .uri("https://192.168.0.1/children-item/recursive-field")
-        .header("Preload", "/recursive_field/recursive_field")
-        .body(())
-        .unwrap();
+    let mut schema = Schema::new::<Root>();
+    let root_selection = NodeSelection::new("root", schema.type_metadata("Root"), &schema);
 
-    let schema = Schema::new::<Root>();
-    let root_node = parse(request, &schema).expect("Unable to parse query.");
-
-    // println!("{:#?}", schema);
     let root_type: Root = Root {};
-    let root_resource = root_type.resolve(&root_node).await;
+    let root_resource = root_type.resolve(&root_selection).await;
 
     resolve(root_resource).await;
+
+    let server = Server { schema };
+    server.run("127.0.0.1:8080").await;
 }

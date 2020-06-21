@@ -1,9 +1,7 @@
-mod query;
-mod resolver;
-mod schema;
-mod types;
+#![allow(unused_imports)]
+#![allow(dead_code)]
 
-pub use crate::query::*;
-pub use crate::resolver::*;
-pub use crate::schema::*;
-pub use crate::types::*;
+pub mod query;
+pub mod schema;
+pub mod server;
+pub mod types;

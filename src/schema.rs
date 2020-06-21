@@ -1,6 +1,5 @@
-use crate::types::resource::{Id, Resource};
-use crate::types::Type;
-use crate::{ObjectOutputType, OutputType, ResolvedNode, Selection};
+use crate::types::resource::Resource;
+use crate::types::{Type, ObjectOutputType};
 use futures::future::BoxFuture;
 use futures::TryFutureExt;
 use route_recognizer::Router;
@@ -8,7 +7,7 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct FieldMetadata {
-    pub name: String,
+    pub name: &'static str,
     pub field_type: String,
 }
 
@@ -32,28 +31,21 @@ pub enum TypeMetadata {
 }
 
 impl TypeMetadata {
-    pub fn new_field<'a, T: Type>(schema: &mut Schema<'a>, name: &str) -> FieldMetadata {
+    pub fn new_field<T: Type>(schema: &mut Schema, name: &'static str) -> FieldMetadata {
         FieldMetadata {
-            name: name.to_string(),
-            field_type: schema.add_type::<T>(),
+            name,
+            field_type: schema.register_type::<T>(),
         }
     }
 
-    pub fn new_object<'a, T: ObjectOutputType<'a>>(fields: &[FieldMetadata]) -> TypeMetadata {
+    pub fn new_object<T: ObjectOutputType>(fields: &[FieldMetadata]) -> TypeMetadata {
         TypeMetadata::Object {
             name: T::type_name().to_string(),
             fields: fields.to_vec(),
         }
     }
 
-    pub fn new_resource<T: Type>(schema: &mut Schema) -> TypeMetadata {
-        TypeMetadata::Resource {
-            name: format!("Resource:{}", T::type_name().to_string()),
-            item_type: schema.add_type::<T>(),
-        }
-    }
-
-    pub fn fields<'a>(&'a self, schema: &'a Schema<'a>) -> Option<&'a Vec<FieldMetadata>> {
+    pub fn fields<'a>(&'a self, schema: &'a Schema) -> Option<&'a Vec<FieldMetadata>> {
         match self {
             TypeMetadata::Object { fields, .. } => Some(fields),
             TypeMetadata::Resource { item_type, .. } | TypeMetadata::List { item_type, .. } => {
@@ -66,20 +58,16 @@ impl TypeMetadata {
     }
 }
 
-pub type ResourceResolver<'a> = fn(Id, &'a Selection) -> BoxFuture<'a, ResolvedNode<'a>>;
-
-pub struct Schema<'a> {
+pub struct Schema {
     types: HashMap<String, TypeMetadata>,
-    router: Router<ResourceResolver<'a>>,
 }
 
-impl<'a> Schema<'a> {
-    pub fn new<Root: Type>() -> Self {
+impl Schema {
+    pub fn new<T: Resource>() -> Self {
         let mut schema = Schema {
             types: Default::default(),
-            router: Router::new(),
         };
-        schema.add_type::<Root>();
+        schema.register_type::<T>();
 
         schema
     }
@@ -90,7 +78,7 @@ impl<'a> Schema<'a> {
             .expect(format!("Unable to get type metadata {}.", name).as_ref())
     }
 
-    pub fn add_type<T: Type>(&mut self) -> String {
+    pub fn register_type<T: Type>(&mut self) -> String {
         let name = T::type_name().to_string();
 
         if !self.types.contains_key(&name) {
@@ -103,21 +91,6 @@ impl<'a> Schema<'a> {
 
             let type_metadata = T::type_metadata(self);
             self.types.insert(name.clone(), type_metadata);
-        }
-
-        name
-    }
-
-    pub fn add_resource_type<T: Resource + OutputType<'a> + Send>(&mut self) -> String {
-        let name = self.add_type::<T>();
-
-        if !self.types.contains_key(&name) {
-            let uri = format!("/{}/:id", name.clone());
-
-            self.router
-                .add(uri.as_str(), |id: Id, node: &'a Selection| {
-                    Box::pin(async move { T::get_item(id).await.resolve(node).await })
-                });
         }
 
         name

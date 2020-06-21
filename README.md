@@ -1,7 +1,7 @@
 # rest-rs 
 
 A web framework to create client-driven REST APIs.
-
+ 
 ## Features 
 
 * Hypermedia links
@@ -11,8 +11,11 @@ A web framework to create client-driven REST APIs.
 
 #### Planned features
 
-* Per resource headers (cache, sunset, ...)
+* Resource config (path, cache headers, sunset header, ...)
 * Content negotiation with JSON-LD and OpenAPI support
+* Write operations :
+    * PATCH with `application/merge-patch+json` or maybe `application/json-patch+json`
+    * DELETE
 
 #### Potential features (long-term)
 
@@ -22,7 +25,7 @@ A web framework to create client-driven REST APIs.
 
 #### Documentation article ideas
 
-* Why and how to use a cache proxy
 * How to build authentication/authorization using Cookies and not JWT
 * How to build a password reset workflow with Paseto (https://paseto.io/)
+* Why and how to use a cache proxy, how to automatically invalid on updates
 * How to generate clients from OpenAPI schemas, how to deal with deployments where clients and API version diverge
