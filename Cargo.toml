@@ -17,4 +17,5 @@ openapiv3 = "0.3.0"
 indexmap = "1.3.2"
 fnv = "1.0.3"
 route-recognizer = "0.1.13"
-h2 = { version = "0.2" }
+h2 = { git = "https://github.com/polc/h2" }
+env_logger = "0.7.1"

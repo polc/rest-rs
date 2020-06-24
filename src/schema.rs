@@ -1,5 +1,6 @@
+use crate::query::NodeSelection;
 use crate::types::resource::Resource;
-use crate::types::{Type, ObjectOutputType};
+use crate::types::{ObjectOutputType, ResolvedNode, Type};
 use futures::future::BoxFuture;
 use futures::TryFutureExt;
 use route_recognizer::Router;
@@ -58,16 +59,24 @@ impl TypeMetadata {
     }
 }
 
+pub struct Route {
+    pub resource_name: String,
+    pub resource_resolver: fn(String, &NodeSelection) -> BoxFuture<'static, ResolvedNode>,
+}
+
 pub struct Schema {
     types: HashMap<String, TypeMetadata>,
+    pub router: Router<Route>,
 }
 
 impl Schema {
     pub fn new<T: Resource>() -> Self {
         let mut schema = Schema {
             types: Default::default(),
+            router: Router::new(),
         };
         schema.register_type::<T>();
+        schema.register_resource::<T>();
 
         schema
     }
@@ -94,5 +103,19 @@ impl Schema {
         }
 
         name
+    }
+
+    pub fn register_resource<T: Resource>(&mut self) {
+        let uri = format!("/{}/:id", T::type_name());
+        let route = Route {
+            resource_name: T::type_name().to_string(),
+            resource_resolver: |id: String, selection: &NodeSelection| {
+                let selection_clone = selection.clone();
+
+                Box::pin(async move { T::fetch_item(id).await.resolve(&selection_clone).await })
+            },
+        };
+
+        self.router.add(uri.as_str(), route);
     }
 }

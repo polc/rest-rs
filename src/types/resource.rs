@@ -3,13 +3,15 @@ use crate::schema::{Schema, TypeMetadata};
 use crate::types::{ObjectOutputType, OutputType, ResolvedNode, ResourceList, Type};
 
 use futures::future::BoxFuture;
+use serde::export::fmt::Debug;
 use serde_json::Value;
 use std::borrow::Cow;
 
+#[async_trait::async_trait]
 pub trait Resource: OutputType {
-    type Id;
+    type Id: From<String>;
 
-    fn get_item(id: Self::Id) -> BoxFuture<'static, Self>;
+    async fn fetch_item(id: String) -> Self;
 }
 
 pub struct Link<T: Resource + Clone + 'static>(pub T);
@@ -20,6 +22,8 @@ impl<T: Resource + Clone + 'static> Type for Link<T> {
     }
 
     fn type_metadata(schema: &mut Schema) -> TypeMetadata {
+        schema.register_resource::<T>();
+
         TypeMetadata::Resource {
             name: Self::type_name().to_string(),
             item_type: schema.register_type::<T>(),

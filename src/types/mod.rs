@@ -7,6 +7,8 @@ use crate::schema::{Schema, TypeMetadata};
 use futures::future::BoxFuture;
 use serde_json::Value;
 use std::borrow::Cow;
+use std::future::Future;
+use std::pin::Pin;
 
 pub type ResourceList = Vec<BoxFuture<'static, ResolvedNode>>;
 pub struct ResolvedNode(pub Value, pub ResourceList);
@@ -30,9 +32,7 @@ pub trait ObjectOutputType: OutputType {
 #[async_trait::async_trait]
 impl<T: ObjectOutputType> OutputType for T {
     async fn resolve(&self, selection: &NodeSelection) -> ResolvedNode {
-        let mut futures: Vec<BoxFuture<(&str, ResolvedNode)>> =
-            Vec::with_capacity(selection.nodes.len());
-
+        let mut futures = Vec::with_capacity(selection.nodes.len());
         for node in &selection.nodes {
             futures.push(self.resolve_field(&node));
         }

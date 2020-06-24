@@ -1,21 +1,35 @@
-# rest-rs 
+# rest-rs (wip)
 
 A web framework to create client-driven REST APIs.
- 
+
 ## Features 
 
-* Hypermedia links
-* Resolve and send graphs of resources using [Vulcain](https://github.com/dunglas/vulcain)
+* Allow defining resources as a graph like a GraphQL server
+* Implement the [Vulcain](https://github.com/dunglas/vulcain) specification to fetch graphs of resources efficiently
 
-## What's next 
+## Usage
+
+For now, I use [h2](https://github.com/hyperium/h2), so `rest-rs` doesn't support HTTP 1.0 upgrades. 
+We need to use an HTTP/2 only client such as `curl` with the `--http2-prior-knowledge` flag.
+
+```bash
+# Start server
+cargo run --example books 
+
+# Send request
+curl --http2-prior-knowledge --trace-ascii - http://localhost:8080/Root/1
+```
+
+## Next
 
 #### Planned features
 
+* Rust macro to automatically implement the `Type` and `ObjectOutputType` traits
 * Resource config (path, cache headers, sunset header, ...)
 * Content negotiation with JSON-LD and OpenAPI support
-* Write operations :
-    * PATCH with `application/merge-patch+json` or maybe `application/json-patch+json`
-    * DELETE
+* Write operations support :
+    * `PATCH` method with `application/merge-patch+json` or maybe `application/json-patch+json`
+    * `DELETE` method
 
 #### Potential features (long-term)
 
@@ -23,9 +37,14 @@ A web framework to create client-driven REST APIs.
 * Native [Mercure](https://github.com/dunglas/mercure) support
 * Proxy automatically to legacy APIs by reading OpenAPI schema or GraphQL schema
 
-#### Documentation article ideas
+## Pitch 
 
-* How to build authentication/authorization using Cookies and not JWT
-* How to build a password reset workflow with Paseto (https://paseto.io/)
-* Why and how to use a cache proxy, how to automatically invalid on updates
-* How to generate clients from OpenAPI schemas, how to deal with deployments where clients and API version diverge
+`rest-rs` is for people who want to build standard and correct RESTful APIs. 
+You will likely not get the best raw performances (reqs/s), but it will feel faster to clients taking full advantage of Vulcain. 
+
+`rest-rs` is best suited for use-case where GraphQL was considered : Dashboards, SPAs, and any clients consuming large graph of resources.
+
+`rest-rs` give developers the freedom of designing their APIs as they want, even in the smallest details :  
+  * Resources of any shapes : object, list, string or number
+  * URLs of any shapes (`/author-books/1`, `/authors/1/books/1`, ...)
+
