@@ -47,4 +47,3 @@ You will likely not get the best raw performances (reqs/s), but it will feel fas
 `rest-rs` give developers the freedom of designing their APIs as they want, even in the smallest details :  
   * Resources of any shapes : object, list, string or number
   * URLs of any shapes (`/author-books/1`, `/authors/1/books/1`, ...)
-

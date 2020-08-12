@@ -7,8 +7,6 @@ use crate::schema::{Schema, TypeMetadata};
 use futures::future::BoxFuture;
 use serde_json::Value;
 use std::borrow::Cow;
-use std::future::Future;
-use std::pin::Pin;
 
 pub type ResourceList = Vec<BoxFuture<'static, ResolvedNode>>;
 pub struct ResolvedNode(pub Value, pub ResourceList);

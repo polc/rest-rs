@@ -1,5 +1,4 @@
 use crate::schema::{Schema, TypeMetadata};
-use http::{Request, Uri};
 
 #[derive(Debug, Default, Clone)]
 pub struct NodeSelection {
@@ -13,7 +12,7 @@ impl NodeSelection {
             name,
             nodes: match type_metadata.fields(schema) {
                 Some(fields) => fields
-                    .into_iter()
+                    .iter()
                     .map(|field| {
                         let field_type_metadata = schema.type_metadata(&field.field_type);
 

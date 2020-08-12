@@ -10,14 +10,14 @@ use rest_rs::{
     },
 };
 
+use futures::core_reexport::convert::TryFrom;
+use rest_rs::types::resource::Route;
+use route_recognizer::Params;
 use std::borrow::Cow;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Root {}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Book {}
 
 impl<'a> Root {
     async fn field_str(&self) -> String {
@@ -57,14 +57,44 @@ impl ObjectOutputType for Root {
     }
 }
 
-#[async_trait::async_trait]
-impl Resource for Root {
-    type Id = String;
+pub struct RootRoute {}
 
-    async fn fetch_item(id: String) -> Self {
-        Self {}
+impl TryFrom<Params> for RootRoute {
+    type Error = ();
+
+    fn try_from(value: Params) -> Result<Self, Self::Error> {
+        match value.iter().count() {
+            0 => Ok(RootRoute {}),
+            _ => Err(()),
+        }
     }
 }
+
+impl Route for RootRoute {
+    fn iri(&self) -> String {
+        "/".into()
+    }
+
+    fn path_pattern() -> &'static str {
+        "/"
+    }
+}
+
+#[async_trait::async_trait]
+impl Resource for Root {
+    type Route = RootRoute;
+
+    fn route(&self) -> Self::Route {
+        RootRoute {}
+    }
+
+    async fn fetch(route: Self::Route) -> Option<Self> {
+        Some(Self {})
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Book {}
 
 impl Book {
     async fn field_str(&self) -> String {
@@ -104,12 +134,47 @@ impl ObjectOutputType for Book {
     }
 }
 
+pub struct BookRoute {
+    id: String,
+}
+
+impl<'a> TryFrom<Params> for BookRoute {
+    type Error = ();
+
+    fn try_from(value: Params) -> Result<Self, Self::Error> {
+        match value.find("id") {
+            Some(id) => Ok(BookRoute { id: id.into() }),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> Route for BookRoute {
+    fn iri(&self) -> String {
+        format!("/books/{}", self.id)
+    }
+
+    fn path_pattern() -> &'static str {
+        "/books/:id"
+    }
+}
+
 #[async_trait::async_trait]
 impl Resource for Book {
-    type Id = String;
+    type Route = BookRoute;
 
-    async fn fetch_item(id: String) -> Self {
-        Self {}
+    fn route(&self) -> Self::Route {
+        BookRoute {
+            id: "book-123".into(),
+        }
+    }
+
+    async fn fetch(route: Self::Route) -> Option<Self> {
+        if route.id.eq("book-123") {
+            Some(Self {})
+        } else {
+            None
+        }
     }
 }
 

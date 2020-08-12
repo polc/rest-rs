@@ -1,17 +1,24 @@
 use crate::query::NodeSelection;
 use crate::schema::{Schema, TypeMetadata};
-use crate::types::{ObjectOutputType, OutputType, ResolvedNode, ResourceList, Type};
+use crate::types::{OutputType, ResolvedNode, ResourceList, Type};
 
-use futures::future::BoxFuture;
-use serde::export::fmt::Debug;
+use route_recognizer::Params;
 use serde_json::Value;
 use std::borrow::Cow;
+use std::convert::TryFrom;
+
+pub trait Route: TryFrom<Params, Error = ()> + Send {
+    fn iri(&self) -> String;
+    fn path_pattern() -> &'static str;
+}
 
 #[async_trait::async_trait]
-pub trait Resource: OutputType {
-    type Id: From<String>;
+pub trait Resource: OutputType + Sized {
+    type Route: Route;
 
-    async fn fetch_item(id: String) -> Self;
+    fn route(&self) -> Self::Route;
+
+    async fn fetch(route: Self::Route) -> Option<Self>;
 }
 
 pub struct Link<T: Resource + Clone + 'static>(pub T);
@@ -34,11 +41,10 @@ impl<T: Resource + Clone + 'static> Type for Link<T> {
 #[async_trait::async_trait]
 impl<T: Resource + Clone + 'static> OutputType for Link<T> {
     async fn resolve(&self, selection: &NodeSelection) -> ResolvedNode {
-        let content = Value::String("/my-resources/321".to_string());
-
         let node_clone = self.0.clone();
         let selection_clone = selection.clone();
 
+        let content = Value::String(node_clone.route().iri());
         let children: ResourceList = vec![Box::pin(async move {
             node_clone.resolve(&selection_clone).await
         })];

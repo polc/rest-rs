@@ -1,12 +1,11 @@
 use crate::query::NodeSelection;
-use crate::schema::{Schema, Route};
+use crate::schema::{ResourceRoute, Schema};
 use crate::types::ResolvedNode;
 use futures::future::BoxFuture;
+use h2::server;
 use h2::server::SendResponse;
-use h2::{server, RecvStream};
-use http::uri;
-use http::{Method, Request, Response, StatusCode};
-use hyper::body::{Buf, Bytes};
+use http::{Method, Response, StatusCode};
+use hyper::body::Bytes;
 use std::error::Error;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
@@ -42,14 +41,22 @@ async fn handle(socket: TcpStream, schema: Arc<Schema>) -> Result<(), Box<dyn Er
         match schema.router.recognize(req.uri().path()) {
             Ok(route_recognizer) => match req.method() {
                 &Method::GET => {
-                    let id = route_recognizer.params.find("id").unwrap();
-                    let Route { resource_name, resource_resolver } = route_recognizer.handler;
+                    let params = route_recognizer.params;
+                    let ResourceRoute { name, resolver } = route_recognizer.handler;
 
-                    let type_metadata = schema.type_metadata(resource_name.as_str());
+                    let type_metadata = schema.type_metadata(name.as_str());
                     let selection = NodeSelection::new("root", type_metadata, &schema);
-                    let resolved_node = (resource_resolver)(id.to_string(), &selection).await;
+                    let resolved_node = (resolver)(params, &selection).await;
 
-                    send_root(resolved_node, &mut stream).await?;
+                    if let Some(resolved_node) = resolved_node {
+                        send_root_node(resolved_node, &mut stream).await?;
+                    } else {
+                        let response = Response::builder()
+                            .status(StatusCode::NOT_FOUND)
+                            .body(())
+                            .unwrap();
+                        stream.send_response(response, true).unwrap();
+                    }
                 }
                 _ => {
                     let response = Response::builder()
@@ -72,7 +79,7 @@ async fn handle(socket: TcpStream, schema: Arc<Schema>) -> Result<(), Box<dyn Er
     Ok(())
 }
 
-async fn send_root(
+async fn send_root_node(
     root: ResolvedNode,
     stream: &mut SendResponse<Bytes>,
 ) -> Result<(), Box<dyn Error>> {
@@ -92,16 +99,16 @@ async fn send_root(
 
     let mut futures = Vec::with_capacity(children.len());
     for child in children {
-        futures.push(send_children(child));
+        futures.push(send_node(child));
     }
     futures::future::join_all(futures).await;
 
     Ok(())
 }
 
-pub fn send_children<'a>(parent: ResolvedNode) -> BoxFuture<'a, ()> {
+pub fn send_node<'a>(node: ResolvedNode) -> BoxFuture<'a, ()> {
     Box::pin(async move {
-        let ResolvedNode(content, children_futures) = parent;
+        let ResolvedNode(content, children_futures) = node;
         let children = futures::future::join_all(children_futures).await;
 
         for ResolvedNode(child_content, _) in &children {
@@ -112,7 +119,7 @@ pub fn send_children<'a>(parent: ResolvedNode) -> BoxFuture<'a, ()> {
 
         let mut futures = Vec::with_capacity(children.len());
         for child in children {
-            futures.push(send_children(child));
+            futures.push(send_node(child));
         }
         futures::future::join_all(futures).await;
     })

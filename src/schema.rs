@@ -1,10 +1,10 @@
 use crate::query::NodeSelection;
-use crate::types::resource::Resource;
+use crate::types::resource::{Resource, Route};
 use crate::types::{ObjectOutputType, ResolvedNode, Type};
 use futures::future::BoxFuture;
-use futures::TryFutureExt;
-use route_recognizer::Router;
+use route_recognizer::{Params, Router};
 use std::collections::HashMap;
+use std::convert::TryFrom;
 
 #[derive(Debug, Clone)]
 pub struct FieldMetadata {
@@ -59,14 +59,14 @@ impl TypeMetadata {
     }
 }
 
-pub struct Route {
-    pub resource_name: String,
-    pub resource_resolver: fn(String, &NodeSelection) -> BoxFuture<'static, ResolvedNode>,
+pub struct ResourceRoute {
+    pub name: String,
+    pub resolver: fn(Params, &NodeSelection) -> BoxFuture<'static, Option<ResolvedNode>>,
 }
 
 pub struct Schema {
     types: HashMap<String, TypeMetadata>,
-    pub router: Router<Route>,
+    pub router: Router<ResourceRoute>,
 }
 
 impl Schema {
@@ -106,16 +106,23 @@ impl Schema {
     }
 
     pub fn register_resource<T: Resource>(&mut self) {
-        let uri = format!("/{}/:id", T::type_name());
-        let route = Route {
-            resource_name: T::type_name().to_string(),
-            resource_resolver: |id: String, selection: &NodeSelection| {
+        let route = ResourceRoute {
+            name: T::type_name().to_string(),
+            resolver: |params: Params, selection: &NodeSelection| {
                 let selection_clone = selection.clone();
 
-                Box::pin(async move { T::fetch_item(id).await.resolve(&selection_clone).await })
+                Box::pin(async move {
+                    match T::Route::try_from(params) {
+                        Ok(id) => match T::fetch(id).await {
+                            Some(resource) => Some(resource.resolve(&selection_clone).await),
+                            _ => None,
+                        },
+                        _ => None,
+                    }
+                })
             },
         };
 
-        self.router.add(uri.as_str(), route);
+        self.router.add(T::Route::path_pattern(), route);
     }
 }

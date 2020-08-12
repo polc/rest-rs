@@ -1,7 +1,6 @@
 use crate::query::NodeSelection;
 use crate::schema::{Schema, TypeMetadata};
 use crate::types::{OutputType, ResolvedNode, Type};
-use futures::future::BoxFuture;
 use serde_json::Value;
 use std::borrow::Cow;
 
