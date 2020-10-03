@@ -1,5 +1,5 @@
-#![allow(unused_imports)]
-#![allow(dead_code)]
+#![feature(async_closure)]
+#![allow(unused_imports, dead_code)]
 
 pub mod query;
 pub mod schema;

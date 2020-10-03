@@ -1,126 +1,33 @@
-use crate::query::NodeSelection;
-use crate::schema::{ResourceRoute, Schema};
-use crate::types::ResolvedNode;
-use futures::future::BoxFuture;
-use h2::server;
-use h2::server::SendResponse;
-use http::{Method, Response, StatusCode};
-use hyper::body::Bytes;
-use std::error::Error;
-use std::sync::Arc;
-use tokio::net::{TcpListener, TcpStream};
+use crate::query::Selection;
+use crate::schema::{RouteDefinition, Schema};
+
+use std::convert::Infallible;
+use std::net::SocketAddr;
+use hyper::{Body, Request, Response, Server as HyperServer};
+use hyper::service::{make_service_fn, service_fn};
 
 pub struct Server {
-    pub schema: Arc<Schema>,
+    pub schema: Schema,
 }
 
 impl Server {
-    pub async fn run(&self, addr: &str) {
-        let mut listener = TcpListener::bind(addr).await.unwrap();
-
-        loop {
-            if let Ok((socket, _peer_addr)) = listener.accept().await {
-                let schema = self.schema.clone();
-
-                tokio::spawn(async move {
-                    if let Err(error) = handle(socket, schema).await {
-                        println!("{:?}", error);
-                    }
-                });
-            }
-        }
-    }
-}
-
-async fn handle(socket: TcpStream, schema: Arc<Schema>) -> Result<(), Box<dyn Error>> {
-    let mut connection = server::handshake(socket).await?;
-
-    while let Some(result) = connection.accept().await {
-        let (req, mut stream) = result?;
-
-        match schema.router.recognize(req.uri().path()) {
-            Ok(route_recognizer) => match req.method() {
-                &Method::GET => {
-                    let params = route_recognizer.params;
-                    let ResourceRoute { name, resolver } = route_recognizer.handler;
-
-                    let type_metadata = schema.type_metadata(name.as_str());
-                    let selection = NodeSelection::new("root", type_metadata, &schema);
-                    let resolved_node = (resolver)(params, &selection).await;
-
-                    if let Some(resolved_node) = resolved_node {
-                        send_root_node(resolved_node, &mut stream).await?;
-                    } else {
-                        let response = Response::builder()
-                            .status(StatusCode::NOT_FOUND)
-                            .body(())
-                            .unwrap();
-                        stream.send_response(response, true).unwrap();
-                    }
-                }
-                _ => {
-                    let response = Response::builder()
-                        .status(StatusCode::METHOD_NOT_ALLOWED)
-                        .body(())
-                        .unwrap();
-                    stream.send_response(response, true).unwrap();
-                }
-            },
-            _ => {
-                let response = Response::builder()
-                    .status(StatusCode::NOT_FOUND)
-                    .body(())
-                    .unwrap();
-                stream.send_response(response, true).unwrap();
-            }
-        }
+    pub fn new(schema: Schema) -> Self {
+        Server { schema }
     }
 
-    Ok(())
-}
+    pub async fn run(&self) {
+        let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 
-async fn send_root_node(
-    root: ResolvedNode,
-    stream: &mut SendResponse<Bytes>,
-) -> Result<(), Box<dyn Error>> {
-    let ResolvedNode(content, children_futures) = root;
-    let children = futures::future::join_all(children_futures).await;
+        let make_svc = make_service_fn(|_conn| async {
+            Ok::<_, Infallible>(service_fn(async move |req: Request<Body>| {
+                Ok::<_, Infallible>(Response::<Body>::new("Hello, World".into()))
+            }))
+        });
 
-    for ResolvedNode(child_content, _) in &children {
-        println!("Push-Promise : {:#}", child_content);
-    }
+        let server = HyperServer::bind(&addr).serve(make_svc);
 
-    println!("Send Response : {:#}", content);
-    let res = Response::builder().status(StatusCode::OK).body(()).unwrap();
-    let mut send = stream.send_response(res, false)?;
-
-    let content_bytes = Bytes::from(serde_json::to_vec(&content).unwrap());
-    send.send_data(content_bytes, true)?;
-
-    let mut futures = Vec::with_capacity(children.len());
-    for child in children {
-        futures.push(send_node(child));
-    }
-    futures::future::join_all(futures).await;
-
-    Ok(())
-}
-
-pub fn send_node<'a>(node: ResolvedNode) -> BoxFuture<'a, ()> {
-    Box::pin(async move {
-        let ResolvedNode(content, children_futures) = node;
-        let children = futures::future::join_all(children_futures).await;
-
-        for ResolvedNode(child_content, _) in &children {
-            println!("Push-Promise : {:#}", child_content);
+        if let Err(e) = server.await {
+            eprintln!("server error: {}", e);
         }
-
-        println!("Server Push : {:#}", content);
-
-        let mut futures = Vec::with_capacity(children.len());
-        for child in children {
-            futures.push(send_node(child));
-        }
-        futures::future::join_all(futures).await;
-    })
+    }
 }

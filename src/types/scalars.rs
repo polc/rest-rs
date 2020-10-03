@@ -1,43 +1,39 @@
-use crate::query::NodeSelection;
+use crate::query::Selection;
 use crate::schema::{Schema, TypeMetadata};
-use crate::types::{OutputType, ResolvedNode, Type};
+use crate::types::{OutputType, Type};
 use serde_json::Value;
 use std::borrow::Cow;
 
 impl Type for String {
-    fn type_name() -> Cow<'static, str> {
+    fn type_id() -> Cow<'static, str> {
         Cow::Borrowed("String")
     }
 
-    fn type_metadata(_schema: &mut Schema) -> TypeMetadata {
-        TypeMetadata::Scalar {
-            name: Self::type_name().to_string(),
-        }
+    fn type_metadata(_: &mut Schema) -> TypeMetadata {
+        TypeMetadata::Scalar
     }
 }
 
 #[async_trait::async_trait]
 impl OutputType for String {
-    async fn resolve(&self, _: &NodeSelection) -> ResolvedNode {
-        ResolvedNode(Value::String(self.clone()), vec![])
+    async fn resolve(&self) -> Value {
+        Value::String(self.clone())
     }
 }
 
 impl Type for &str {
-    fn type_name() -> Cow<'static, str> {
+    fn type_id() -> Cow<'static, str> {
         Cow::Borrowed("String")
     }
 
-    fn type_metadata(_schema: &mut Schema) -> TypeMetadata {
-        TypeMetadata::Scalar {
-            name: Self::type_name().to_string(),
-        }
+    fn type_metadata(_: &mut Schema) -> TypeMetadata {
+        TypeMetadata::Scalar
     }
 }
 
 #[async_trait::async_trait]
 impl OutputType for &str {
-    async fn resolve(&self, _: &NodeSelection) -> ResolvedNode {
-        ResolvedNode(Value::String(self.to_string()), vec![])
+    async fn resolve(&self,) -> Value {
+        Value::String(self.to_string())
     }
 }
