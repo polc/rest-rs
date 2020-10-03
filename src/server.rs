@@ -1,9 +1,9 @@
-use crate::query::NodeSelection;
-use crate::schema::{ResourceRoute, Schema};
+use crate::query::Selection;
+use crate::schema::{RouteDefinition, Schema};
 use crate::types::ResolvedNode;
+
 use futures::future::BoxFuture;
 use h2::server;
-use h2::server::SendResponse;
 use http::{Method, Response, StatusCode};
 use hyper::body::Bytes;
 use std::error::Error;
@@ -15,6 +15,12 @@ pub struct Server {
 }
 
 impl Server {
+    pub fn new(schema: Schema) -> Self {
+        let schema = Arc::new(schema);
+
+        Server { schema }
+    }
+
     pub async fn run(&self, addr: &str) {
         let mut listener = TcpListener::bind(addr).await.unwrap();
 
@@ -42,11 +48,12 @@ async fn handle(socket: TcpStream, schema: Arc<Schema>) -> Result<(), Box<dyn Er
             Ok(route_recognizer) => match req.method() {
                 &Method::GET => {
                     let params = route_recognizer.params;
-                    let ResourceRoute { name, resolver } = route_recognizer.handler;
+                    let RouteDefinition { type_id, resolver } = route_recognizer.handler;
 
-                    let type_metadata = schema.type_metadata(name.as_str());
-                    let selection = NodeSelection::new("root", type_metadata, &schema);
+                    let selection = Selection::resource(&type_id, &schema);
                     let resolved_node = (resolver)(params, &selection).await;
+
+                    // selection_set.parse_request(&req);
 
                     if let Some(resolved_node) = resolved_node {
                         send_root_node(resolved_node, &mut stream).await?;
@@ -81,7 +88,7 @@ async fn handle(socket: TcpStream, schema: Arc<Schema>) -> Result<(), Box<dyn Er
 
 async fn send_root_node(
     root: ResolvedNode,
-    stream: &mut SendResponse<Bytes>,
+    stream: &mut server::SendResponse<Bytes>,
 ) -> Result<(), Box<dyn Error>> {
     let ResolvedNode(content, children_futures) = root;
     let children = futures::future::join_all(children_futures).await;
@@ -106,7 +113,7 @@ async fn send_root_node(
     Ok(())
 }
 
-pub fn send_node<'a>(node: ResolvedNode) -> BoxFuture<'a, ()> {
+fn send_node<'a>(node: ResolvedNode) -> BoxFuture<'a, ()> {
     Box::pin(async move {
         let ResolvedNode(content, children_futures) = node;
         let children = futures::future::join_all(children_futures).await;

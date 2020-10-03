@@ -131,8 +131,8 @@ Finally we create a schema from the `Root` resource, and start a new server.
 ```rust
 #[tokio::main]
 async fn main() {
-    let schema = Arc::new(Schema::new::<Root>());
-    let server = Server { schema };
+    let schema = Schema::new::<Root>();
+    let server = Server::new(schema);
 
     server.run("127.0.0.1:8080").await;
 }

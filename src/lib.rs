@@ -1,5 +1,4 @@
-#![allow(unused_imports)]
-#![allow(dead_code)]
+#![allow(unused_imports, dead_code)]
 
 pub mod query;
 pub mod schema;

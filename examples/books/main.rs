@@ -1,20 +1,21 @@
 extern crate rest_rs;
 
 use rest_rs::{
-    query::NodeSelection,
+    query::Selection,
     schema::{Schema, TypeMetadata},
     server::Server,
     types::{
-        resource::{Link, Resource},
-        ObjectOutputType, OutputType, ResolvedNode, Type,
+        object::ObjectOutputType,
+        resource::{Iri, Link, Resource},
+        OutputType, ResolvedNode, Type,
     },
 };
 
-use futures::core_reexport::convert::TryFrom;
-use rest_rs::types::resource::Route;
 use route_recognizer::Params;
 use std::borrow::Cow;
-use std::sync::Arc;
+use std::convert::TryFrom;
+use std::fmt;
+use rest_rs::query::ObjectField;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Root {}
@@ -30,7 +31,7 @@ impl<'a> Root {
 }
 
 impl Type for Root {
-    fn type_name() -> Cow<'static, str> {
+    fn type_id() -> Cow<'static, str> {
         Cow::Borrowed("Root")
     }
 
@@ -46,35 +47,47 @@ impl Type for Root {
 
 #[async_trait::async_trait]
 impl ObjectOutputType for Root {
-    async fn resolve_field(&self, selection: &NodeSelection) -> (&'static str, ResolvedNode) {
-        let resolved_node = match selection.name {
-            "field_str" => self.field_str().await.resolve(&selection).await,
-            "field_link" => self.field_link().await.resolve(&selection).await,
-            _ => panic!("Field {} not found on type Root", selection.name),
+    async fn resolve_field(&self, field: &ObjectField) -> (&'static str, ResolvedNode) {
+        let resolved_node = match field.name {
+            "field_str" => {
+                self.field_str()
+                    .await
+                    .resolve(&field.selection)
+                    .await
+            }
+            "field_link" => {
+                self.field_link()
+                    .await
+                    .resolve(&field.selection)
+                    .await
+            }
+            _ => panic!("Field {} not found on type Root", field.name),
         };
 
-        (selection.name, resolved_node)
+        (field.name, resolved_node)
     }
 }
 
-pub struct RootRoute {}
+pub struct RootIri {}
 
-impl TryFrom<Params> for RootRoute {
+impl TryFrom<Params> for RootIri {
     type Error = ();
 
     fn try_from(value: Params) -> Result<Self, Self::Error> {
         match value.iter().count() {
-            0 => Ok(RootRoute {}),
+            0 => Ok(RootIri {}),
             _ => Err(()),
         }
     }
 }
 
-impl Route for RootRoute {
-    fn iri(&self) -> String {
-        "/".into()
+impl fmt::Display for RootIri {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "/")
     }
+}
 
+impl Iri for RootIri {
     fn path_pattern() -> &'static str {
         "/"
     }
@@ -82,13 +95,13 @@ impl Route for RootRoute {
 
 #[async_trait::async_trait]
 impl Resource for Root {
-    type Route = RootRoute;
+    type Iri = RootIri;
 
-    fn route(&self) -> Self::Route {
-        RootRoute {}
+    fn iri(&self) -> Self::Iri {
+        RootIri {}
     }
 
-    async fn fetch(route: Self::Route) -> Option<Self> {
+    async fn fetch(_: Self::Iri) -> Option<Self> {
         Some(Self {})
     }
 }
@@ -107,14 +120,14 @@ impl Book {
 }
 
 impl Type for Book {
-    fn type_name() -> Cow<'static, str> {
+    fn type_id() -> Cow<'static, str> {
         Cow::Borrowed("Book")
     }
 
     fn type_metadata(schema: &mut Schema) -> TypeMetadata {
         let fields = &[
             TypeMetadata::new_field::<&str>(schema, "field_str"),
-            // TypeMetadata::new_field::<Link<Book>>(schema, "field_recursive"),
+            TypeMetadata::new_field::<Link<Book>>(schema, "field_recursive"),
         ];
 
         TypeMetadata::new_object::<Book>(fields)
@@ -123,37 +136,49 @@ impl Type for Book {
 
 #[async_trait::async_trait]
 impl ObjectOutputType for Book {
-    async fn resolve_field(&self, selection: &NodeSelection) -> (&'static str, ResolvedNode) {
-        let resolved_node = match selection.name {
-            "field_str" => self.field_str().await.resolve(&selection).await,
-            "field_recursive" => self.field_recursive().await.resolve(&selection).await,
-            _ => panic!("Field {} not found on type Book", selection.name),
+    async fn resolve_field(&self, field: &ObjectField) -> (&'static str, ResolvedNode) {
+        let resolved_node = match field.name {
+            "field_str" => {
+                self.field_str()
+                    .await
+                    .resolve(&field.selection)
+                    .await
+            }
+            "field_recursive" => {
+                self.field_recursive()
+                    .await
+                    .resolve(&field.selection)
+                    .await
+            }
+            _ => panic!("Field {} not found on type Book", field.name),
         };
 
-        (selection.name, resolved_node)
+        (field.name, resolved_node)
     }
 }
 
-pub struct BookRoute {
+pub struct BookIri {
     id: String,
 }
 
-impl<'a> TryFrom<Params> for BookRoute {
+impl<'a> TryFrom<Params> for BookIri {
     type Error = ();
 
     fn try_from(value: Params) -> Result<Self, Self::Error> {
         match value.find("id") {
-            Some(id) => Ok(BookRoute { id: id.into() }),
+            Some(id) => Ok(BookIri { id: id.into() }),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> Route for BookRoute {
-    fn iri(&self) -> String {
-        format!("/books/{}", self.id)
+impl fmt::Display for BookIri {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "/books/{}", self.id)
     }
+}
 
+impl Iri for BookIri {
     fn path_pattern() -> &'static str {
         "/books/:id"
     }
@@ -161,15 +186,15 @@ impl<'a> Route for BookRoute {
 
 #[async_trait::async_trait]
 impl Resource for Book {
-    type Route = BookRoute;
+    type Iri = BookIri;
 
-    fn route(&self) -> Self::Route {
-        BookRoute {
+    fn iri(&self) -> Self::Iri {
+        BookIri {
             id: "book-123".into(),
         }
     }
 
-    async fn fetch(route: Self::Route) -> Option<Self> {
+    async fn fetch(route: Self::Iri) -> Option<Self> {
         if route.id.eq("book-123") {
             Some(Self {})
         } else {
@@ -180,8 +205,8 @@ impl Resource for Book {
 
 #[tokio::main]
 async fn main() {
-    let schema = Arc::new(Schema::new::<Root>());
-    let server = Server { schema };
+    let schema = Schema::new::<Root>();
+    let server = Server::new(schema);
 
     server.run("127.0.0.1:8080").await;
 }
